@@ -8,6 +8,13 @@
       "when": 1791474855233,
       "tag": "0000_resources_hub",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791476078365,
+      "tag": "0001_require_login_for_resources",
+      "breakpoints": true
     }
   ]
 }
