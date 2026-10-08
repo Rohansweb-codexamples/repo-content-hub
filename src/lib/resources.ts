@@ -2,6 +2,16 @@ import { supabase } from "@/integrations/supabase/client";
 
 export const BUCKET = "resources";
 
+export const RESOURCE_CATEGORIES = ["Presentations", "Guides & PDFs", "Media & Assets"] as const;
+
+export type ResourceCategory = (typeof RESOURCE_CATEGORIES)[number];
+
+export const CATEGORY_DETAILS: Record<ResourceCategory, { description: string }> = {
+  Presentations: { description: "Slide decks, talks and keynote material." },
+  "Guides & PDFs": { description: "Reports, handbooks and practical reading." },
+  "Media & Assets": { description: "Images, archives and supporting creative files." },
+};
+
 export type Resource = {
   id: string;
   title: string;
@@ -29,4 +39,14 @@ export async function openResource(path: string) {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
   if (error || !data) throw error ?? new Error("Could not open file");
   window.open(data.signedUrl, "_blank", "noopener");
+}
+
+export async function getResourceUrl(path: string) {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+  if (error || !data) throw error ?? new Error("Could not open file");
+  return data.signedUrl;
+}
+
+export function canPreviewResource(resource: Resource) {
+  return resource.file_type === "application/pdf" || resource.file_type.startsWith("image/");
 }
