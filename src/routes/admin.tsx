@@ -86,7 +86,7 @@ function AuthForm() {
         ? await supabase.auth.signInWithPassword({ email, password })
         : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/admin` } });
     setBusy(false);
-    if (res.error) return toast.error(res.error.message);
+    if (res.error) { toast.error(res.error.message); return; }
     if (mode === "up" && !res.data.session) toast.success("Check your email to confirm your account.");
   }
 
@@ -120,7 +120,7 @@ function Dashboard() {
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!draft.id && !draft.file) return toast.error("Choose a file to upload");
+    if (!draft.id && !draft.file) { toast.error("Choose a file to upload"); return; }
     setBusy(true);
     try {
       let fileFields = {};
@@ -137,7 +137,8 @@ function Dashboard() {
       if (res.error) throw res.error;
       toast.success(draft.id ? "Resource updated" : "Resource uploaded");
       setDraft(empty);
-      (document.getElementById("file") as HTMLInputElement | null)?.value && ((document.getElementById("file") as HTMLInputElement).value = "");
+      const fileInput = document.getElementById("file") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
       load();
     } catch (err) {
       toast.error((err as Error).message);
@@ -148,7 +149,7 @@ function Dashboard() {
 
   async function togglePublish(r: Resource) {
     const { error } = await supabase.from("resources").update({ published: !r.published }).eq("id", r.id);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     load();
   }
 
@@ -156,7 +157,7 @@ function Dashboard() {
     if (!confirm(`Delete "${r.title}"?`)) return;
     await supabase.storage.from(BUCKET).remove([r.file_path]);
     const { error } = await supabase.from("resources").delete().eq("id", r.id);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Deleted");
     load();
   }
