@@ -11,3 +11,4 @@
 
 - Admin access is granted only via the `user_roles` table (a signup trigger assigns the admin role to the configured admin email); never check admin status client-side alone — RLS enforces it.
 - Resource files live in a private storage bucket and are opened via short-lived signed URLs, because the workspace blocks public buckets.
+- Member pages live under the managed authenticated route group so library access is enforced consistently before rendering.

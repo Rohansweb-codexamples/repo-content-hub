@@ -1,0 +1,41 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { FilePlus2, Pencil, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { toast } from "sonner";
+import { ResourceShell } from "@/components/resource-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
+import { BUCKET, RESOURCE_CATEGORIES, fileLabel, formatSize, type Resource } from "@/lib/resources";
+
+export const Route = createFileRoute("/_authenticated/admin")({
+  head: () => ({ meta: [
+    { title: "Resource Administration — The Resource Room" },
+    { name: "description", content: "Manage and publish member resources." },
+    { property: "og:title", content: "Resource Administration — The Resource Room" },
+    { property: "og:description", content: "Manage and publish member resources." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+    { name: "robots", content: "noindex" },
+  ] }),
+  component: AdminPage,
+});
+
+type Draft = { id?: string; title: string; description: string; category: string; published: boolean; file?: File | null };
+const empty: Draft = { title: "", description: "", category: RESOURCE_CATEGORIES[0], published: true, file: null };
+
+function AdminPage() {
+  const { user } = Route.useRouteContext(); const [isAdmin, setIsAdmin] = useState<boolean | null>(null); const [items, setItems] = useState<Resource[]>([]); const [draft, setDraft] = useState<Draft>(empty); const [customCategory, setCustomCategory] = useState(false); const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { const { data, error } = await supabase.from("resources").select("*").order("created_at", { ascending: false }); if (error) toast.error(error.message); setItems((data as Resource[]) ?? []); }, []);
+  useEffect(() => { supabase.from("user_roles").select("role").eq("user_id", user.id).eq("role", "admin").maybeSingle().then(({ data }) => { setIsAdmin(Boolean(data)); if (data) load(); }); }, [load, user.id]);
+  async function save(event: FormEvent) { event.preventDefault(); if (!draft.id && !draft.file) return toast.error("Choose a file to upload."); setBusy(true); try { let fields = {}; if (draft.file) { const path = `${crypto.randomUUID()}-${draft.file.name.replace(/[^\w.-]+/g, "_")}`; const upload = await supabase.storage.from(BUCKET).upload(path, draft.file); if (upload.error) throw upload.error; fields = { file_path: path, file_name: draft.file.name, file_type: draft.file.type, file_size: draft.file.size }; } const row = { title: draft.title, description: draft.description, category: draft.category || "General", published: draft.published, updated_at: new Date().toISOString(), ...fields }; const result = draft.id ? await supabase.from("resources").update(row).eq("id", draft.id) : await supabase.from("resources").insert(row as never); if (result.error) throw result.error; toast.success(draft.id ? "Resource updated." : "Resource uploaded."); setDraft(empty); setCustomCategory(false); load(); } catch (caught) { toast.error((caught as Error).message); } finally { setBusy(false); } }
+  async function remove(item: Resource) { if (!confirm(`Delete “${item.title}”?`)) return; await supabase.storage.from(BUCKET).remove([item.file_path]); const { error } = await supabase.from("resources").delete().eq("id", item.id); if (error) toast.error(error.message); else { toast.success("Resource deleted."); load(); } }
+  async function toggle(item: Resource) { const { error } = await supabase.from("resources").update({ published: !item.published }).eq("id", item.id); if (error) toast.error(error.message); else load(); }
+  if (isAdmin === null) return <ResourceShell><main className="mx-auto max-w-7xl px-5 py-20 text-muted-foreground">Checking access…</main></ResourceShell>;
+  if (!isAdmin) return <ResourceShell><main className="mx-auto max-w-7xl px-5 py-20"><h1 className="text-3xl font-semibold">Admin access required</h1><p className="mt-3 text-muted-foreground">This account cannot manage resources.</p></main></ResourceShell>;
+  return <ResourceShell admin><main className="mx-auto max-w-7xl px-4 py-10 sm:px-6"><div className="mb-10"><p className="text-sm font-semibold text-primary">Administration</p><h1 className="mt-2 text-4xl font-semibold">Manage the library</h1></div><div className="grid gap-8 lg:grid-cols-[380px_1fr]"><form onSubmit={save} className="h-fit space-y-4 rounded-lg border border-border bg-card p-6"><h2 className="flex items-center gap-2 text-xl font-semibold"><FilePlus2 className="text-primary" />{draft.id ? "Edit resource" : "Add resource"}</h2><div className="space-y-2"><Label>Title</Label><Input required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></div><div className="space-y-2"><Label>Description</Label><Textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></div><div className="space-y-2"><Label>Category</Label>{customCategory ? <Input autoFocus placeholder="Custom category" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} /> : <Select value={draft.category} onValueChange={(value) => { if (value === "custom") { setCustomCategory(true); setDraft({ ...draft, category: "" }); } else setDraft({ ...draft, category: value }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{RESOURCE_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}<SelectItem value="custom">Custom category…</SelectItem></SelectContent></Select>}</div><div className="space-y-2"><Label>{draft.id ? "Replace file (optional)" : "File"}</Label><Input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.key,.xls,.xlsx,.txt,.zip,.png,.jpg,.jpeg" onChange={(event) => setDraft({ ...draft, file: event.target.files?.[0] ?? null })} /><p className="text-xs text-muted-foreground">Up to 50 MB</p></div><div className="flex items-center gap-3"><Switch checked={draft.published} onCheckedChange={(published) => setDraft({ ...draft, published })} /><Label>Published</Label></div><div className="flex gap-2"><Button type="submit" className="flex-1" disabled={busy}>{busy ? "Saving…" : draft.id ? "Save changes" : "Upload"}</Button>{draft.id && <Button type="button" variant="outline" onClick={() => { setDraft(empty); setCustomCategory(false); }}>Cancel</Button>}</div></form><section><div className="mb-4 flex items-end justify-between"><h2 className="text-2xl font-semibold">All resources</h2><span className="text-sm text-muted-foreground">{items.length} items</span></div><div className="overflow-hidden rounded-lg border border-border bg-card">{items.length === 0 ? <p className="p-8 text-sm text-muted-foreground">Nothing uploaded yet.</p> : items.map((item) => <div key={item.id} className="flex flex-wrap items-center gap-3 border-b border-border p-4 last:border-0"><span className="rounded bg-secondary px-2 py-1 text-xs font-semibold text-secondary-foreground">{fileLabel(item.file_name)}</span><div className="min-w-48 flex-1"><p className="font-semibold">{item.title}</p><p className="mt-1 text-xs text-muted-foreground">{item.category} · {formatSize(item.file_size)} · {item.published ? "Published" : "Draft"}</p></div><Button size="sm" variant="outline" onClick={() => toggle(item)}>{item.published ? "Unpublish" : "Publish"}</Button><Button size="icon" variant="ghost" aria-label={`Edit ${item.title}`} onClick={() => { setDraft({ id: item.id, title: item.title, description: item.description, category: item.category, published: item.published, file: null }); setCustomCategory(!RESOURCE_CATEGORIES.includes(item.category as (typeof RESOURCE_CATEGORIES)[number])); }}><Pencil /></Button><Button size="icon" variant="ghost" aria-label={`Delete ${item.title}`} onClick={() => remove(item)}><Trash2 /></Button></div>)}</div></section></div></main></ResourceShell>;
+}
